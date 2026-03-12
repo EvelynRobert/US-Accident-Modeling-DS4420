@@ -1,1 +1,3 @@
-# DS-4420-Final-Project-Zoe-Evelyn
+# US Accident Modeling
+## DS 4420
+## Evelyn Robert and Zoe Garbus
