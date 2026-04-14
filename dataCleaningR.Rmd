@@ -1,0 +1,69 @@
+### Data Cleaning and Preprocessing for R model (Bayesian)
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(readr)
+
+# Load data
+df <- read_csv("accidents_sample.csv")
+
+# Select relevant columns
+cols_to_keep <- c(
+  "Start_Time", "Severity", "Temperature(F)",
+  "Humidity(%)", "Visibility(mi)", "Weather_Condition",
+  "Sunrise_Sunset", "State", "Distance(mi)"
+)
+
+df <- df[, cols_to_keep]
+
+# Drop rows missing critical columns (Start_Time or Severity)
+df <- df %>%
+  filter(!is.na(Start_Time), !is.na(Severity))
+
+# Fill numeric columns with medians
+num_cols <- c("Temperature(F)", "Humidity(%)", "Visibility(mi)", "Distance(mi)")
+
+for (col in num_cols) {
+  col_median <- median(df[[col]], na.rm = TRUE)
+  df[[col]][is.na(df[[col]])] <- col_median
+}
+
+# Fill categorical with mode
+get_mode <- function(x) {
+  tbl <- table(x, useNA = "no")
+  names(tbl)[which.max(tbl)]
+}
+
+df$Weather_Condition[is.na(df$Weather_Condition)] <- get_mode(df$Weather_Condition)
+df$Sunrise_Sunset[is.na(df$Sunrise_Sunset)]       <- get_mode(df$Sunrise_Sunset)
+
+# Parse timestamps
+df$Start_Time <- parse_date_time(df$Start_Time, orders = c("ymd HMS", "ymd HMSz"))
+df$Date      <- as.Date(df$Start_Time)
+df$Year      <- year(df$Start_Time)
+df$Month     <- month(df$Start_Time)
+df$Hour      <- hour(df$Start_Time)
+# 0 = Monday, 6 = Sunday
+df$DayOfWeek <- wday(df$Start_Time, week_start = 1) - 1
+
+# Encode categorical variables as factors
+df$Severity         <- factor(df$Severity, levels = 1:4, ordered = TRUE)
+df$Weather_Condition <- factor(df$Weather_Condition)
+df$Sunrise_Sunset   <- factor(df$Sunrise_Sunset)
+df$State            <- factor(df$State)
+
+# Describe data
+cat(sprintf("Rows: %d | Cols: %d\n\n", nrow(df), ncol(df)))
+cat("Severity distribution:\n")
+print(table(df$Severity))
+
+# Save cleaned data to use
+write_csv(df %>% mutate(
+  Start_Time = as.character(Start_Time),
+  Date       = as.character(Date),
+  Severity   = as.integer(Severity)
+), "accidents_clean.csv")
+
+```
+
