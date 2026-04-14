@@ -1,0 +1,116 @@
+# Bayesian Classification: Traffic Accident Severity
+# DS 4420 Final Project
+# Predicts severity (1-4) from environmental/situational features
+
+```{r}
+library(brms)
+library(readr)
+
+# load cleaned data
+accidents <- as.data.frame(read_csv("accidents_clean.csv"))
+
+# feature engineering
+# bin hour into time of day
+accidents$TimeOfDay <- cut(accidents$Hour,
+                           breaks = c(-1, 5, 11, 16, 20, 23),
+                           labels = c("Night", "Morning", "Afternoon", "Evening", "LateNight"))
+
+# simplify weather into broad buckets
+accidents$Weather_Bucket <- ifelse(grepl("Rain|Drizzle|Shower",        accidents$Weather_Condition, ignore.case=T), "Rain",
+                            ifelse(grepl("Snow|Sleet|Hail|Ice|Wintry", accidents$Weather_Condition, ignore.case=T), "Snow",
+                            ifelse(grepl("Fog|Mist|Haze|Smoke",        accidents$Weather_Condition, ignore.case=T), "Fog",
+                            ifelse(grepl("Cloud|Overcast",              accidents$Weather_Condition, ignore.case=T), "Cloudy",
+                            ifelse(grepl("Clear|Fair|Sunny",            accidents$Weather_Condition, ignore.case=T), "Clear",
+                            "Other")))))
+
+# brms needs categorical variables as factors, not integers
+accidents$IsNight <- as.factor(accidents$Sunrise_Sunset == "Night")
+accidents$Severity <- as.factor(accidents$Severity)
+accidents$Weather_Bucket <- as.factor(accidents$Weather_Bucket)
+accidents$TimeOfDay <- as.factor(accidents$TimeOfDay)
+
+# scale continuous features
+accidents$Temp <- scale(accidents$`Temperature(F)`)
+accidents$Humidity <- scale(accidents$`Humidity(%)`)
+accidents$Visibility <- scale(accidents$`Visibility(mi)`)
+accidents$Distance <- scale(accidents$`Distance(mi)`)
+
+# downsample to balance classes (severity 2 and 3 dominate)
+set.seed(42)
+target_n <- 5000
+balanced <- do.call(rbind, lapply(1:4, function(k) {
+  s <- accidents[accidents$Severity == k, ]
+  s[sample(nrow(s), min(nrow(s), target_n)), ]
+}))
+
+# train/test split (80/20)
+train_idx <- sample(nrow(balanced), floor(0.8 * nrow(balanced)))
+train <- balanced[train_idx, ]
+test  <- balanced[-train_idx, ]
+
+print(table(train$Severity))
+```
+
+```{r}
+# check default priors
+default_prior(Severity ~ Temp + Humidity + Visibility + Distance + IsNight + Weather_Bucket + TimeOfDay,
+              data = train,
+              family = categorical("logit"))
+
+# define manual priors
+manual_prior <- c(
+  brms::prior(student_t(3, 0, 5), class = "Intercept", dpar = "mu2"),
+  brms::prior(student_t(3, 0, 5), class = "Intercept", dpar = "mu3"),
+  brms::prior(student_t(3, 0, 5), class = "Intercept", dpar = "mu4"),
+  brms::prior(normal(0, 1), class = "b", dpar = "mu2"),
+  brms::prior(normal(0, 1), class = "b", dpar = "mu3"),
+  brms::prior(normal(0, 1), class = "b", dpar = "mu4")
+)
+
+# fit the model
+severity_brm <- brm(
+  Severity ~ Temp + Humidity + Visibility + Distance + IsNight + Weather_Bucket + TimeOfDay,
+  family  = categorical("logit"),
+  data    = train,
+  chains  = 4,
+  iter    = 2000,
+  warmup  = 500,
+  thin    = 2,
+  cores   = getOption("mc.cores", 4),
+  prior   = manual_prior
+)
+
+# diagnostics
+summary(severity_brm)
+plot(severity_brm)
+
+# conditional effects
+plot(conditional_effects(severity_brm, "Temp",       categorical=TRUE))
+plot(conditional_effects(severity_brm, "Visibility", categorical=TRUE))
+plot(conditional_effects(severity_brm, "IsNight",    categorical=TRUE))
+
+# posterior predictive for one accident
+# each row is an MCMC sample, each column a test observation
+# values are predicted severity class labels
+post_preds <- posterior_predict(severity_brm, newdata=test)
+
+# accuracy on test set
+pred_classes <- apply(post_preds, 2, function(x) as.integer(names(which.max(table(x)))))
+cat("Accuracy:", round(mean(pred_classes == as.integer(test$Severity)), 4), "\n")
+
+# confusion matrix
+print(table(Predicted=pred_classes, Actual=as.integer(test$Severity)))
+
+# posterior predictive distribution for one observation
+hist(post_preds[, 1], main="Post Pred Distribution: Accident 1",
+     xlab="Predicted Severity", col="steelblue", border="white")
+cat("True severity:", as.integer(test$Severity[1]), "\n")
+
+# credible interval plot
+plot(conditional_effects(severity_brm, "Humidity", categorical=TRUE))
+```
+
+
+
+
+
