@@ -153,4 +153,58 @@ hist(post_preds[, 1], main="Post Pred Distribution: Accident 1",
      xlab="Predicted Severity", col="steelblue", border="white")
 cat("True severity:", as.integer(test$Severity[1]), "\n")
 ```
+### More plotting - to see predictor effects on accident severity 
 
+```{r}
+library(tidybayes)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+
+severity_brm %>%
+  gather_draws(`b_.*`, regex = TRUE) %>%
+  filter(.variable != "b_Intercept") %>%
+  mutate(
+    # extract severity class from parameter name
+    severity_class = case_when(
+      str_detect(.variable, "mu2") ~ "Severity 2",
+      str_detect(.variable, "mu3") ~ "Severity 3",
+      str_detect(.variable, "mu4") ~ "Severity 4"
+    ),
+    # clean up predictor names for display
+    predictor = .variable %>%
+      str_remove("b_mu[234]_") %>%
+      str_replace_all("Weather_Bucket", "Weather: ") %>%
+      str_replace_all("TimeOfDay", "Time: ") %>%
+      str_replace_all("IsNightTRUE", "Is Night") %>%
+      str_replace_all("Temp", "Temperature") %>%
+      str_replace_all("Visibility", "Visibility") %>%
+      str_replace_all("Humidity", "Humidity") %>%
+      str_replace_all("Distance", "Distance")
+  ) %>%
+  ggplot(aes(x = .value, y = reorder(predictor, .value), color = severity_class, fill = severity_class)) +
+  stat_halfeye(
+    .width = c(0.5, 0.95),
+    alpha = 0.6,
+    position = position_dodge(width = 0.6)
+  ) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40", linewidth = 0.5) +
+  scale_color_manual(values = c("Severity 2" = "#4dac26", "Severity 3" = "#d6604d", "Severity 4" = "#8B008B")) +
+  scale_fill_manual(values  = c("Severity 2" = "#4dac26", "Severity 3" = "#d6604d", "Severity 4" = "#8B008B")) +
+  facet_wrap(~ severity_class, ncol = 3) +
+  labs(
+    title = "Predictor effects on accident severity",
+    subtitle = "Posterior distributions with 50% and 95% credible intervals. Reference: Severity 1.",
+    x = "Log-odds coefficient",
+    y = NULL,
+    caption = "Effects to the right of zero increase probability of that severity class relative to Severity 1."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold"),
+    axis.text.y = element_text(size = 10)
+  )
+```
