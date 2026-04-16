@@ -89,14 +89,14 @@ manual_prior <- c(
 # fit the model
 severity_brm <- brm(
   Severity ~ Temp + Humidity + Visibility + Distance + IsNight + Weather_Bucket + TimeOfDay,
-  family  = categorical("logit"),
-  data    = train,
-  chains  = 4,
-  iter    = 2000,
-  warmup  = 500,
-  thin    = 2,
-  cores   = getOption("mc.cores", 4),
-  prior   = manual_prior
+  family = categorical("logit"),
+  data = train,
+  chains = 4,
+  iter = 2000,
+  warmup = 500,
+  thin = 2,
+  cores = getOption("mc.cores", 4),
+  prior = manual_prior
 )
 
 # diagnostics
@@ -128,10 +128,10 @@ cm <- confusionMatrix(
 
 # extract and print per-class metrics
 metrics <- data.frame(
-  Class     = paste("Severity", 1:4),
+  Class = paste("Severity", 1:4),
   Precision = round(cm$byClass[, "Precision"], 3),
-  Recall    = round(cm$byClass[, "Recall"], 3),
-  F1        = round(cm$byClass[, "F1"], 3)
+  Recall = round(cm$byClass[, "Recall"], 3),
+  F1 = round(cm$byClass[, "F1"], 3)
 )
 
 print(metrics)
